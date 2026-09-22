@@ -93,4 +93,12 @@ def generate_launch_description():
     )
     ld.add_action(odometry_spoof_node)
 
+    #################### Sonic Filter Node #####################
+    sonic_filter_node = Node(
+        package='bringup_robot',
+        name='sonic_filter_node',
+        executable='sonic_filter_node',
+    )
+    ld.add_action(sonic_filter_node)
+
     return ld

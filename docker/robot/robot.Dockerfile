@@ -24,6 +24,10 @@ RUN apt-get -qq update && rosdep update && \
 FROM ${BASE_IMAGE} AS dependencies
 
 # ADD MORE DEPENDENCIES HERE
+RUN apt-get update && apt-fast install -qq -y --no-install-recommends \
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
+    libopencv-dev
 
 # Install Rosdep requirements
 COPY --from=source /tmp/colcon_install_list /tmp/colcon_install_list
