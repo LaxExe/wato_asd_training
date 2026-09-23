@@ -51,7 +51,7 @@ geometry_msgs::msg::Twist ControlCore::computeVelocity(
   geometry_msgs::msg::Twist cmd_vel;
 
   if (path.poses.empty() || isGoalReached(path, odom)) {
-    return cmd_vel; // Return 0 velocity when path empty or goal reached
+    return cmd_vel;
   }
 
   const auto &robot_pos = odom.pose.pose.position;
@@ -60,7 +60,6 @@ geometry_msgs::msg::Twist ControlCore::computeVelocity(
 
   const auto &target_pos = target_opt->pose.position;
 
-  // Transform target into local robot frame
   double robot_yaw = extractYaw(odom.pose.pose.orientation);
   double dx = target_pos.x - robot_pos.x;
   double dy = target_pos.y - robot_pos.y;
@@ -70,14 +69,12 @@ geometry_msgs::msg::Twist ControlCore::computeVelocity(
 
   double heading_angle = std::atan2(y_rel, x_rel);
 
-  // In-Place Rotation for Sharp / 180 Turns
   if (std::abs(heading_angle) > M_PI / 2.0) {
     cmd_vel.linear.x = 0.0;
     cmd_vel.angular.z = (heading_angle > 0.0) ? max_angular_speed_ : -max_angular_speed_;
     return cmd_vel;
   }
 
-  // Standard Pure Pursuit with increased linear speed (1.0 m/s) and responsive angular control
   double dist_to_target = computeDistance(robot_pos, target_pos);
   double Ld = std::max(dist_to_target, 0.1);
 
@@ -90,3 +87,4 @@ geometry_msgs::msg::Twist ControlCore::computeVelocity(
 }
 
 }
+

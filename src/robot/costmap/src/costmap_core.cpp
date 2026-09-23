@@ -28,7 +28,6 @@ void CostmapCore::inflateObstacles(std::vector<std::vector<int>> &grid) {
   for (int x = 0; x < width_; ++x) {
     for (int y = 0; y < height_; ++y) {
       if (grid[x][y] == max_cost_) {
-        // Inflate around this lethal obstacle
         for (int dx = -inflation_cells; dx <= inflation_cells; ++dx) {
           for (int dy = -inflation_cells; dy <= inflation_cells; ++dy) {
             int nx = x + dx;
@@ -51,10 +50,8 @@ void CostmapCore::inflateObstacles(std::vector<std::vector<int>> &grid) {
 }
 
 nav_msgs::msg::OccupancyGrid CostmapCore::processLaserScan(const sensor_msgs::msg::LaserScan::SharedPtr scan) {
-  // 1. Initialize 2D grid with 0 (free space)
   std::vector<std::vector<int>> grid(width_, std::vector<int>(height_, 0));
 
-  // 2. Convert LaserScan points to Grid and mark obstacles
   for (size_t i = 0; i < scan->ranges.size(); ++i) {
     double range = scan->ranges[i];
     if (range >= scan->range_min && range <= scan->range_max) {
@@ -69,13 +66,11 @@ nav_msgs::msg::OccupancyGrid CostmapCore::processLaserScan(const sensor_msgs::ms
     }
   }
 
-  // 3. Inflate obstacles
   inflateObstacles(grid);
 
-  // 4. Construct OccupancyGrid message
   nav_msgs::msg::OccupancyGrid occupancy_grid;
   occupancy_grid.header = scan->header;
-  occupancy_grid.header.frame_id = "robot/base_link"; // Local costmap relative to robot frame
+  occupancy_grid.header.frame_id = "robot/base_link";
 
   occupancy_grid.info.resolution = resolution_;
   occupancy_grid.info.width = width_;
@@ -85,7 +80,6 @@ nav_msgs::msg::OccupancyGrid CostmapCore::processLaserScan(const sensor_msgs::ms
   occupancy_grid.info.origin.position.z = 0.0;
   occupancy_grid.info.origin.orientation.w = 1.0;
 
-  // Flatten 2D grid into 1D data array (row-major order: y * width + x)
   occupancy_grid.data.resize(width_ * height_);
   for (int y = 0; y < height_; ++y) {
     for (int x = 0; x < width_; ++x) {

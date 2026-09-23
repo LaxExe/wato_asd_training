@@ -32,7 +32,6 @@ void PlannerCore::gridToWorld(const nav_msgs::msg::OccupancyGrid &map, int gx, i
 }
 
 double PlannerCore::heuristic(int x1, int y1, int x2, int y2) const {
-  // True Euclidean distance heuristic for shortest geometric path
   double dx = x1 - x2;
   double dy = y1 - y2;
   return std::sqrt(dx * dx + dy * dy);
@@ -86,7 +85,7 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
   int start_x, start_y, raw_goal_x, raw_goal_y;
   if (!worldToGrid(map, start_point.x, start_point.y, start_x, start_y) ||
       !worldToGrid(map, goal_point.x, goal_point.y, raw_goal_x, raw_goal_y)) {
-    RCLCPP_WARN(logger_, "Start or Goal point is outside the map boundaries!");
+    RCLCPP_WARN(logger_, "Start or goal point is outside map boundaries");
     return std::nullopt;
   }
 
@@ -101,13 +100,11 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
     auto [adj_x, adj_y] = findClosestValidCell(map, raw_goal_x, raw_goal_y);
     goal_x = adj_x;
     goal_y = adj_y;
-    RCLCPP_INFO(logger_, "Target goal is unexplored/invalid (%d). Adjusting target goal to closest known cell (%d, %d).", goal_cost, goal_x, goal_y);
   }
 
-  // 8-connected grid directions (cardinal + diagonal)
   const std::vector<std::pair<int, int>> directions = {
-    {1, 0}, {-1, 0}, {0, 1}, {0, -1},       // Cardinal moves (cost = 1.0)
-    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}       // Diagonal moves (cost = 1.414)
+    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
   };
 
   std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_set;
@@ -142,14 +139,10 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
 
       int map_cost = map.data[ny * width + nx];
-      if (map_cost >= obstacle_threshold_) continue; // Skip lethal obstacles
+      if (map_cost >= obstacle_threshold_) continue;
 
       int effective_cost = (map_cost < 0) ? 5 : map_cost;
-
-      // Base step cost: 1.0 for straight, 1.414 (sqrt(2)) for diagonal
       double base_step = (dir.first != 0 && dir.second != 0) ? M_SQRT2 : 1.0;
-
-      // Small costmap obstacle weighting to stay safely off wall edges
       double step_cost = base_step + (effective_cost / 50.0);
       double tentative_g = current_g + step_cost;
 
@@ -165,7 +158,7 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
   }
 
   if (!path_found) {
-    RCLCPP_WARN(logger_, "A* failed to find a valid path to the goal.");
+    RCLCPP_WARN(logger_, "A* search could not find a path to the target.");
     return std::nullopt;
   }
 
@@ -194,3 +187,4 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
 }
 
 }
+

@@ -1,16 +1,12 @@
 #include "sonic_filter_node.hpp"
 
 SonicFilterNode::SonicFilterNode() : Node("sonic_filter_node") {
-  // Load transparent Sonic image overlay
   std::string overlay_path = "/home/bolty/ament_ws/src/robot/bringup_robot/Sonic-Movie-PNG.png";
   sonic_overlay_ = cv::imread(overlay_path, cv::IMREAD_UNCHANGED);
 
   if (sonic_overlay_.empty()) {
-    RCLCPP_ERROR(this->get_logger(), "Failed to load Sonic overlay image from: %s", overlay_path.c_str());
+    RCLCPP_ERROR(this->get_logger(), "Failed to load overlay from: %s", overlay_path.c_str());
   } else {
-    RCLCPP_INFO(this->get_logger(), "Successfully loaded Sonic overlay image (%dx%d)", sonic_overlay_.cols, sonic_overlay_.rows);
-    
-    // Resize overlay if it's too large for camera frame (e.g. max 150x150)
     if (sonic_overlay_.cols > 150 || sonic_overlay_.rows > 150) {
       double scale = 150.0 / std::max(sonic_overlay_.cols, sonic_overlay_.rows);
       cv::resize(sonic_overlay_, sonic_overlay_, cv::Size(), scale, scale, cv::INTER_AREA);
@@ -23,8 +19,6 @@ SonicFilterNode::SonicFilterNode() : Node("sonic_filter_node") {
     std::bind(&SonicFilterNode::imageCallback, this, std::placeholders::_1));
 
   image_pub_ = it.advertise("/camera/sonic_image", 10);
-
-  RCLCPP_INFO(this->get_logger(), "Sonic Filter Node initialized. Subscribed to /camera/image_raw, publishing to /camera/sonic_image.");
 }
 
 void SonicFilterNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg) {
@@ -46,7 +40,7 @@ void SonicFilterNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPt
 void SonicFilterNode::applySonicAesthetic(cv::Mat& background) {
   if (sonic_overlay_.empty()) return;
 
-  int y_start = 20; // Top-left corner coordinates on video feed
+  int y_start = 20;
   int x_start = 20;
 
   if (y_start + sonic_overlay_.rows > background.rows ||
@@ -54,11 +48,10 @@ void SonicFilterNode::applySonicAesthetic(cv::Mat& background) {
     return;
   }
 
-  // Alpha blend transparent PNG onto background frame
   for (int y = 0; y < sonic_overlay_.rows; y++) {
     for (int x = 0; x < sonic_overlay_.cols; x++) {
       cv::Vec4b overlay_pixel = sonic_overlay_.at<cv::Vec4b>(y, x);
-      if (overlay_pixel[3] > 0) { // If pixel is not transparent
+      if (overlay_pixel[3] > 0) {
         cv::Vec3b& bg_pixel = background.at<cv::Vec3b>(y + y_start, x + x_start);
         float alpha = static_cast<float>(overlay_pixel[3]) / 255.0f;
         bg_pixel[0] = static_cast<uchar>((1 - alpha) * bg_pixel[0] + alpha * overlay_pixel[0]);
@@ -76,3 +69,4 @@ int main(int argc, char** argv) {
   rclcpp::shutdown();
   return 0;
 }
+
