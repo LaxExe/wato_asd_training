@@ -15,11 +15,13 @@ bool PlannerCore::worldToGrid(const nav_msgs::msg::OccupancyGrid &map, double wx
 
   if (wx < ox || wy < oy) return false;
 
-  gx = static_cast<int>((wx - ox) / res);
-  gy = static_cast<int>((wy - oy) / res);
+  gx = (int)((wx - ox) / res);
+  gy = (int)((wy - oy) / res);
 
-  return (gx >= 0 && gx < static_cast<int>(map.info.width) &&
-          gy >= 0 && gy < static_cast<int>(map.info.height));
+  if (gx < 0 || gx >= (int)map.info.width || gy < 0 || gy >= (int)map.info.height) {
+    return false;
+  }
+  return true;
 }
 
 void PlannerCore::gridToWorld(const nav_msgs::msg::OccupancyGrid &map, int gx, int gy, double &wx, double &wy) const {
@@ -32,9 +34,7 @@ void PlannerCore::gridToWorld(const nav_msgs::msg::OccupancyGrid &map, int gx, i
 }
 
 double PlannerCore::heuristic(int x1, int y1, int x2, int y2) const {
-  double dx = x1 - x2;
-  double dy = y1 - y2;
-  return std::sqrt(dx * dx + dy * dy);
+  return std::sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 }
 
 std::pair<int, int> PlannerCore::findClosestValidCell(
@@ -50,23 +50,23 @@ std::pair<int, int> PlannerCore::findClosestValidCell(
   q.push({goal_x, goal_y});
   visited[goal_x][goal_y] = true;
 
-  const std::vector<std::pair<int, int>> dirs = {
-    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
-    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
-  };
+  int dx[] = {1, -1, 0, 0, 1, 1, -1, -1};
+  int dy[] = {0, 0, 1, -1, 1, -1, 1, -1};
 
   while (!q.empty()) {
-    auto [cx, cy] = q.front();
+    auto current = q.front();
     q.pop();
+    int cx = current.first;
+    int cy = current.second;
 
     int cost = map.data[cy * width + cx];
     if (cost >= 0 && cost < obstacle_threshold_) {
       return {cx, cy};
     }
 
-    for (const auto &d : dirs) {
-      int nx = cx + d.first;
-      int ny = cy + d.second;
+    for (int i = 0; i < 8; i++) {
+      int nx = cx + dx[i];
+      int ny = cy + dy[i];
       if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited[nx][ny]) {
         visited[nx][ny] = true;
         q.push({nx, ny});
@@ -97,22 +97,21 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
   int goal_y = raw_goal_y;
 
   if (goal_cost < 0 || goal_cost >= obstacle_threshold_) {
-    auto [adj_x, adj_y] = findClosestValidCell(map, raw_goal_x, raw_goal_y);
-    goal_x = adj_x;
-    goal_y = adj_y;
+    auto adj = findClosestValidCell(map, raw_goal_x, raw_goal_y);
+    goal_x = adj.first;
+    goal_y = adj.second;
   }
 
-  const std::vector<std::pair<int, int>> directions = {
-    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
-    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
-  };
+  int dx[] = {1, -1, 0, 0, 1, 1, -1, -1};
+  int dy[] = {0, 0, 1, -1, 1, -1, 1, -1};
+  double step_costs[] = {1.0, 1.0, 1.0, 1.0, 1.414213, 1.414213, 1.414213, 1.414213};
 
   std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_set;
-  std::unordered_map<CellIndex, double, CellIndexHash> g_score;
+  std::vector<std::vector<double>> g_score(width, std::vector<double>(height, 1e9));
   std::unordered_map<CellIndex, CellIndex, CellIndexHash> came_from;
 
   CellIndex start_cell{start_x, start_y};
-  g_score[start_cell] = 0.0;
+  g_score[start_x][start_y] = 0.0;
   open_set.push({start_cell, heuristic(start_x, start_y, goal_x, goal_y)});
 
   bool path_found = false;
@@ -130,11 +129,11 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
       break;
     }
 
-    double current_g = g_score[curr_idx];
+    double current_g = g_score[curr_idx.x][curr_idx.y];
 
-    for (const auto &dir : directions) {
-      int nx = curr_idx.x + dir.first;
-      int ny = curr_idx.y + dir.second;
+    for (int i = 0; i < 8; i++) {
+      int nx = curr_idx.x + dx[i];
+      int ny = curr_idx.y + dy[i];
 
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
 
@@ -142,15 +141,13 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
       if (map_cost >= obstacle_threshold_) continue;
 
       int effective_cost = (map_cost < 0) ? 5 : map_cost;
-      double base_step = (dir.first != 0 && dir.second != 0) ? M_SQRT2 : 1.0;
-      double step_cost = base_step + (effective_cost / 50.0);
+      double step_cost = step_costs[i] + (effective_cost / 50.0);
       double tentative_g = current_g + step_cost;
 
-      CellIndex neighbor{nx, ny};
-
-      if (g_score.find(neighbor) == g_score.end() || tentative_g < g_score[neighbor]) {
+      if (tentative_g < g_score[nx][ny]) {
+        CellIndex neighbor{nx, ny};
         came_from[neighbor] = curr_idx;
-        g_score[neighbor] = tentative_g;
+        g_score[nx][ny] = tentative_g;
         double f_val = tentative_g + heuristic(nx, ny, goal_x, goal_y);
         open_set.push({neighbor, f_val});
       }
@@ -174,10 +171,10 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
   path_cells.push_back(start_cell);
   std::reverse(path_cells.begin(), path_cells.end());
 
-  for (const auto &cell : path_cells) {
+  for (size_t i = 0; i < path_cells.size(); i++) {
     geometry_msgs::msg::PoseStamped pose;
     pose.header.frame_id = map.header.frame_id;
-    gridToWorld(map, cell.x, cell.y, pose.pose.position.x, pose.pose.position.y);
+    gridToWorld(map, path_cells[i].x, path_cells[i].y, pose.pose.position.x, pose.pose.position.y);
     pose.pose.position.z = 0.0;
     pose.pose.orientation.w = 1.0;
     path.poses.push_back(pose);
@@ -187,4 +184,5 @@ std::optional<nav_msgs::msg::Path> PlannerCore::planPath(
 }
 
 }
+
 
